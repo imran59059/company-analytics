@@ -25,7 +25,7 @@ export default function CultureDiagnosisPager() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const yoyTrendingData = {
+    const defaultYoyTrendingData = {
         "Revenue/Emp": [
             { year: "2021", codeclouds: 65, industry: 85 },
             { year: "2022", codeclouds: 72, industry: 90 },
@@ -56,7 +56,7 @@ export default function CultureDiagnosisPager() {
         ],
     }
 
-    const metricInsights = {
+    const defaultMetricInsights = {
         "Revenue/Emp": {
             status: "Improving",
             current: "85 vs 100 (industry)",
@@ -91,7 +91,7 @@ export default function CultureDiagnosisPager() {
         },
     }
 
-    const cultureData = [
+    const defaultCultureData = [
         { dimension: "Recognition", codeclouds: 6.2, industry: 7.5 },
         { dimension: "Manager Rel.", codeclouds: 6.8, industry: 7.8 },
         { dimension: "Leadership", codeclouds: 7.1, industry: 8.0 },
@@ -101,14 +101,14 @@ export default function CultureDiagnosisPager() {
         { dimension: "Communication", codeclouds: 6.9, industry: 7.7 },
     ]
 
-    const attritionData = [
+    const defaultAttritionData = [
         { tenure: "0-1yr", count: 24, reason: "Growth" },
         { tenure: "1-3yr", count: 18, reason: "Manager" },
         { tenure: "3-5yr", count: 12, reason: "Pay" },
         { tenure: "5+yr", count: 8, reason: "Culture" },
     ]
 
-    const roiData = [
+    const defaultRoiData = [
         { lever: "Baseline PAT", value: 100 },
         { lever: "Turnover Reduction", value: 28 },
         { lever: "Productivity Uplift", value: 35 },
@@ -117,7 +117,7 @@ export default function CultureDiagnosisPager() {
 
     const COLORS = ["#8b5cf6", "#6366f1", "#ec4899", "#f59e0b"]
 
-    const employeeFeedbackData = {
+    const defaultEmployeeFeedbackData = {
         Recognition: {
             gap: "6.2/10 vs 7.5 industry",
             comments: [
@@ -279,7 +279,44 @@ export default function CultureDiagnosisPager() {
                 },
             ],
         },
-    }
+    };
+
+    const defaultCompanyStats = {
+        employees: "1,240",
+        revenue: "₹245M",
+        turnover: "18%",
+        avg_tenure: "4.2 yrs"
+    };
+    const defaultExecutiveSummary = {
+        text: "CodeClouds shows strong financial performance but faces cultural headwinds in recognition and career growth. Strategic interventions can unlock a ",
+        highlight: "21% PAT improvement"
+    };
+
+    // ------------------- DYNAMIC DATA LOGIC -------------------
+    const dashboardData = companyDetails?.dashboard_data
+        ? (typeof companyDetails.dashboard_data === 'string' ? JSON.parse(companyDetails.dashboard_data) : companyDetails.dashboard_data)
+        : null;
+
+    const companyStats = dashboardData?.companyStats || defaultCompanyStats;
+    const executiveSummary = dashboardData?.executiveSummary || defaultExecutiveSummary;
+
+    // Normalizers to map specific AI keys to Component keys
+    const normalizeYoy = (data) => {
+        if (!data) return null;
+        const res = {};
+        Object.keys(data).forEach(k => {
+            res[k] = data[k].map(i => ({ ...i, codeclouds: i.company_score ?? i.codeclouds, industry: i.industry_score ?? i.industry }));
+        });
+        return res;
+    };
+    const normalizeCulture = (data) => data?.map(i => ({ ...i, codeclouds: i.company_score ?? i.codeclouds, industry: i.industry_score ?? i.industry }));
+
+    const yoyTrendingData = normalizeYoy(dashboardData?.yoyTrendingData) || defaultYoyTrendingData;
+    const metricInsights = dashboardData?.metricInsights || defaultMetricInsights;
+    const cultureData = normalizeCulture(dashboardData?.cultureData) || defaultCultureData;
+    const attritionData = dashboardData?.attritionData || defaultAttritionData;
+    const roiData = dashboardData?.roiData || defaultRoiData;
+    const employeeFeedbackData = dashboardData?.employeeFeedbackData || defaultEmployeeFeedbackData;
 
     const bubbleChartData = cultureData.map((item) => ({
         x: item.codeclouds,
@@ -295,10 +332,10 @@ export default function CultureDiagnosisPager() {
         const fetchCompanyDetails = async () => {
             console.warn('Useeffect called...2');
             if (!id) return;
-            
+
             setLoading(true);
             setError(null);
-            
+
             try {
                 const response = await fetch(`http://localhost:3001/api/company-analytics/${id}`);
                 if (!response.ok) {
@@ -316,7 +353,7 @@ export default function CultureDiagnosisPager() {
                 setLoading(false);
             }
         };
-        
+
         console.warn('Useeffect called...3');
         fetchCompanyDetails();
     }, [id]);
@@ -353,9 +390,8 @@ export default function CultureDiagnosisPager() {
                                 </span>
                             </h2>
                             <p className="text-lg text-purple-200 leading-relaxed">
-                                CodeClouds shows strong financial performance but faces cultural headwinds in recognition and career
-                                growth. Strategic interventions can unlock a{" "}
-                                <span className="font-bold text-amber-400">21% PAT improvement</span> within 12 months.
+                                {executiveSummary.text}{" "}
+                                <span className="font-bold text-amber-400">{executiveSummary.highlight}</span> within 12 months.
                             </p>
                         </div>
 
@@ -363,19 +399,19 @@ export default function CultureDiagnosisPager() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg p-4">
                                 <p className="text-sm text-purple-300 mb-1">Employees</p>
-                                <p className="text-2xl font-bold">1,240</p>
+                                <p className="text-2xl font-bold">{companyStats.employees}</p>
                             </div>
                             <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg p-4">
                                 <p className="text-sm text-purple-300 mb-1">Revenue (FY)</p>
-                                <p className="text-2xl font-bold">₹245M</p>
+                                <p className="text-2xl font-bold">{companyStats.revenue}</p>
                             </div>
                             <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg p-4">
                                 <p className="text-sm text-purple-300 mb-1">Turnover Rate</p>
-                                <p className="text-2xl font-bold text-red-400">18%</p>
+                                <p className="text-2xl font-bold text-red-400">{companyStats.turnover || companyStats.turnover_rate}</p>
                             </div>
                             <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg p-4">
                                 <p className="text-sm text-purple-300 mb-1">Avg Tenure</p>
-                                <p className="text-2xl font-bold">4.2 yrs</p>
+                                <p className="text-2xl font-bold">{companyStats.avg_tenure}</p>
                             </div>
                         </div>
                     </div>
@@ -396,8 +432,8 @@ export default function CultureDiagnosisPager() {
                                     key={metric}
                                     onMouseEnter={() => setActiveMetric(metric)}
                                     className={`transition-all duration-300 rounded-lg p-5 cursor-pointer ${isActive
-                                            ? "bg-gradient-to-br from-purple-500/30 to-purple-600/20 border-2 border-purple-400 shadow-lg shadow-purple-500/20"
-                                            : "bg-slate-900/50 border border-purple-500/20 hover:border-purple-500/40"
+                                        ? "bg-gradient-to-br from-purple-500/30 to-purple-600/20 border-2 border-purple-400 shadow-lg shadow-purple-500/20"
+                                        : "bg-slate-900/50 border border-purple-500/20 hover:border-purple-500/40"
                                         }`}
                                 >
                                     <div className="flex items-start justify-between mb-3">

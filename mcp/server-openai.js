@@ -622,6 +622,111 @@ async function* generateCompanyVoiceReviews(companyName, liveWebData) {
   }
 }
 
+// ----------------------------- PROMPT: DASHBOARD DATA -----------------------------
+
+function buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis) {
+  return `Act as a senior business intelligence analyst. Based on the analysis of "${companyName}" provided below, generate a realistic JSON dataset for a strategic HR & Performance dashboard.
+
+**Analysis Context:**
+${companyDetails.substring(0, 3000)}...
+${finalAnalysis}
+
+**Required JSON Structure:**
+You must return a SINGLE VALID JSON object with these keys:
+{
+  "companyStats": {
+    "employees": "1,200",
+    "revenue": "$50M",
+    "turnover": "15%",
+    "avg_tenure": "3.5 yrs"
+  },
+  "executiveSummary": {
+    "text": "The company shows strong fundamentals but struggles with...",
+    "highlight": "20% PAT improvement"
+  },
+  "yoyTrendingData": {
+    "Revenue/Emp": [ {"year": "2021", "company_score": 65, "industry_score": 85}, ... ],
+    "Profit/Emp": [ ... ],
+    "Retention": [ ... ],
+    "Turnover": [ ... ]
+  },
+  "metricInsights": {
+    "Revenue/Emp": { "status": "Improving|Lagging|Competitive", "current": "85 vs 100", "gap": "15% below", "insight": "...", "color": "amber|red|green" },
+    "Profit/Emp": { ... },
+    "Retention": { ... },
+    "Turnover": { ... }
+  },
+  "cultureData": [
+    { "dimension": "Recognition", "company_score": 6.2, "industry_score": 7.5 },
+    { "dimension": "Manager Rel.", "company_score": 6.8, "industry_score": 7.8 },
+    { "dimension": "Leadership", "company_score": 7.1, "industry_score": 8.0 },
+    { "dimension": "Psych Safety", "company_score": 6.5, "industry_score": 7.2 },
+    { "dimension": "Career Growth", "company_score": 5.9, "industry_score": 7.6 },
+    { "dimension": "Work-Life", "company_score": 7.2, "industry_score": 7.4 },
+    { "dimension": "Communication", "company_score": 6.9, "industry_score": 7.7 }
+  ],
+  "attritionData": [
+    { "tenure": "0-1yr", "count": 24, "reason": "Growth" },
+    { "tenure": "1-3yr", "count": 18, "reason": "Manager" },
+    { "tenure": "3-5yr", "count": 10, "reason": "Pay" },
+    { "tenure": "5+yr", "count": 5, "reason": "Culture" }
+  ],
+  "roiData": [
+    { "lever": "Baseline PAT", "value": 100 },
+    { "lever": "Assessment", "value": 0 },
+    { "lever": "Turnover Reduction", "value": 25 },
+    { "lever": "Productivity Uplift", "value": 30 },
+    { "lever": "Projected PAT", "value": 155 }
+  ],
+  "employeeFeedbackData": {
+    "Recognition": { "gap": "...", "comments": [{ "source": "Glassdoor", "rating": 3, "text": "...", "author": "..." }] },
+    "Career Growth": { "gap": "...", "comments": [...] },
+    "Communication": { "gap": "...", "comments": [...] },
+    "Manager Rel.": { ... },
+    "Leadership": { ... },
+    "Psych Safety": { ... },
+    "Work-Life": { ... }
+  }
+}
+
+**Rules:**
+1. Populate with REAListic estimated data based on the text analysis. If explicit numbers are missing, infer plausible values.
+2. Ensure strict JSON syntax. No markdown. No comments.
+3. "company_score" represents ${companyName}'s metric. "industry_score" is Benchmark.
+`;
+}
+
+// ----------------------------- STEP 4: DASHBOARD DATA GENERATOR -----------------------------
+
+async function* generateDashboardData(companyName, companyDetails, finalAnalysis) {
+  try {
+    const prompt = buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis);
+
+    const streamingResponse = await openAIClient.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: "You are a data generator backend. Output ONLY JSON." },
+        { role: "user", content: prompt },
+      ],
+      stream: true,
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+    });
+
+    for await (const responseChunk of streamingResponse) {
+      const chunkContent = responseChunk.choices?.[0]?.delta?.content;
+      if (chunkContent) {
+        yield { result: chunkContent, done: false, step: 4 };
+      }
+    }
+
+    yield { done: true, step: 4 };
+  } catch (error) {
+    console.error("❌ Error in generateDashboardData:", error);
+    yield { error: "Failed to generate dashboard data." };
+  }
+}
+
 // ------------------------- TRI-STEP PIPELINE -------------------------
 
 async function* generateTriStepAnalysis(companyName) {
@@ -722,6 +827,32 @@ async function* generateTriStepAnalysis(companyName) {
         step: 3,
         done: true,
         stepComplete: "Solution mapping completed",
+        sourcesMetadata,
+      };
+      break;
+    }
+  }
+
+  yield { transition: "Generating visual dashboard data...", step: "transition-3-4" };
+
+  // STEP 4: Dashboard Data
+  console.log(`📊 Step 4: Generating dashboard data for ${companyName}`);
+
+  for await (const chunk of generateDashboardData(companyName, companyDetails, finalAnalysis)) {
+    if (chunk.error) {
+      yield chunk;
+      return;
+    }
+
+    if (chunk.result) {
+      yield { result: chunk.result, step: 4, done: false };
+    }
+
+    if (chunk.done) {
+      yield {
+        step: 4,
+        done: true,
+        stepComplete: "Dashboard data generated",
         finalStep: true,
         sourcesMetadata,
       };
@@ -790,6 +921,7 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
     let companyDetails = "";
     let finalAnalysis = "";
     let companyVoice = "";
+    let dashboardData = ""; // Capture step 4 JSON
     let sourcesMetadata = null;
     const analysisStartTime = Date.now();
     const analysisUuid = uuidv4();
@@ -827,18 +959,22 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
       if (chunk.result) {
         const stepName = chunk.step === 0 ? "Live Web Search" :
           chunk.step === 1 ? "Company Research" :
-            chunk.step === 2 ? "Strategic Analysis" : "Solution Mapping";
+            chunk.step === 2 ? "Strategic Analysis" :
+              chunk.step === 3 ? "Solution Mapping" : "Dashboard Generation";
 
         if (chunk.step === 1) companyDetails += chunk.result;
         else if (chunk.step === 2) finalAnalysis += chunk.result;
         else if (chunk.step === 3) companyVoice += chunk.result;
+        else if (chunk.step === 4) dashboardData += chunk.result;
 
-        res.write(`data: ${JSON.stringify({
-          text: chunk.result,
-          step: chunk.step,
-          stepName,
-          uuid: analysisUuid
-        })}\n\n`);
+        if (chunk.step !== 4) {
+          res.write(`data: ${JSON.stringify({
+            text: chunk.result,
+            step: chunk.step,
+            stepName,
+            uuid: analysisUuid
+          })}\n\n`);
+        }
       }
 
       if (chunk.done && chunk.finalStep) {
@@ -856,8 +992,8 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
 
     await pool.execute(
       `INSERT INTO company_analytc 
-        (uuid, company_name, model, latency_ms, analysis, company_details, reviews, sources, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        (uuid, company_name, model, latency_ms, analysis, company_details, reviews, sources, dashboard_data, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         analysisUuid,
         companyName,
@@ -867,6 +1003,7 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
         companyDetails || "Details not available.",
         companyVoice || "Reviews not available.",
         sourcesMetadata?.sourcesJson || null,
+        dashboardData || null,
       ]
     );
 
@@ -887,7 +1024,7 @@ expressApp.get("/api/company-analytics/:uuid", async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT uuid, company_name, model, latency_ms, 
-              analysis, company_details, reviews, sources, created_at 
+              analysis, company_details, reviews, sources, dashboard_data, created_at 
        FROM company_analytc 
        WHERE uuid = ?`,
       [uuid]
@@ -970,7 +1107,8 @@ async function initializeBusinessAnalyticsServer() {
     try {
       await pool.execute(`
         ALTER TABLE company_analytc 
-        ADD COLUMN IF NOT EXISTS sources JSON
+        ADD COLUMN IF NOT EXISTS sources JSON,
+        ADD COLUMN IF NOT EXISTS dashboard_data JSON
       `);
       console.log("✅ Database schema updated with sources column");
     } catch (dbError) {

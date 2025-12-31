@@ -68,7 +68,7 @@ function ChatWithCompany() {
   // Navigate to company details page
   const handleViewCompany = (companyId, companyName) => {
     console.log({ companyId });
-    navigate(`/company-details2/${companyId}`, {
+    navigate(`/company-details/${companyId}`, {
       state: {
         companyName: companyName,
         fromAnalytics: true

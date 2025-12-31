@@ -262,20 +262,23 @@ const CompanyDetails = () => {
                         </div>
                     </div>
 
-                    {/* Model Card */}
-                    <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-2xl"></div>
+                    {/* Visual Dashboard Link Card */}
+                    <div
+                        onClick={() => navigate(`/company-details2/${id}`, { state: { companyName: companyDetails?.company_name } })}
+                        className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border-2 border-indigo-100 hover:border-indigo-400 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-blue-500/5 rounded-2xl"></div>
                         <div className="relative">
                             <div className="flex items-center justify-between mb-3">
-                                <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center">
-                                    <CpuChipIcon className="h-6 w-6 text-purple-600" />
+                                <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 transition-colors duration-300">
+                                    <ChartBarIcon className="h-6 w-6 text-indigo-600 group-hover:text-white transition-colors duration-300" />
                                 </div>
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                    AI
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors duration-300">
+                                    View Dashboard
                                 </span>
                             </div>
-                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">AI Model</h3>
-                            <p className="text-lg font-bold text-slate-800">{companyDetails.model}</p>
+                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1 group-hover:text-indigo-600">Strategic View</h3>
+                            <p className="text-lg font-bold text-slate-800 group-hover:text-indigo-700">Open Visuals &rarr;</p>
                         </div>
                     </div>
 

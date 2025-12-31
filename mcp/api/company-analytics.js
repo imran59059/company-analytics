@@ -94,7 +94,7 @@ app.get("/api/company-analytics/:id", async (req, res) => {
 
     const [rows] = await pool.execute(
       `SELECT id, uuid, company_name, number_of_employees, company_gstin, 
-              model, latency_ms, analysis, company_details, reviews, created_at 
+              model, latency_ms, analysis, company_details, reviews, sources, dashboard_data, created_at 
        FROM company_analytc 
        WHERE uuid = ?`,
       [id]
