@@ -56,7 +56,7 @@ function ChatWithCompany() {
 
       const data = await response.json();
       console.log({ data });
-      setCompanyData(data?.data || []);
+      setCompanyData(data || []);  // Backend sends array directly, not { data: [...] }
     } catch (err) {
       console.error('Error fetching company data:', err);
       alert('Failed to fetch company data: ' + err.message);
@@ -114,7 +114,7 @@ function ChatWithCompany() {
       abortControllerRef.current = new AbortController();
 
       // const response = await fetch('http://localhost:8081/dual-step-analysis-stream', {
-      const response = await fetch('http://localhost:8081/tri-step-analysis-stream', {
+      const response = await fetch('http://localhost:3001/tri-step-analysis-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

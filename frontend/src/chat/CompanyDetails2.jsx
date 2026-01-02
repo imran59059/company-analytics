@@ -311,12 +311,37 @@ export default function CultureDiagnosisPager() {
     };
     const normalizeCulture = (data) => data?.map(i => ({ ...i, codeclouds: i.company_score ?? i.codeclouds, industry: i.industry_score ?? i.industry }));
 
+    const defaultSolutionRoadmap = [
+        { problem: "Low Recognition", feature: "Awards + Badges + Feed", impact: "+12% retention", timeline: "3–6 mo" },
+        { problem: "Poor Manager Feedback", feature: "Anonymous Feedback + Pulse", impact: "+8% engagement", timeline: "1–3 mo" },
+        { problem: "Career Clarity Gap", feature: "Journey + Analytics", impact: "+15% internal mobility", timeline: "6–12 mo" },
+        { problem: "Communication Gaps", feature: "Feed + Announcements", impact: "+10% trust score", timeline: "1–2 mo" }
+    ];
+
     const yoyTrendingData = normalizeYoy(dashboardData?.yoyTrendingData) || defaultYoyTrendingData;
     const metricInsights = dashboardData?.metricInsights || defaultMetricInsights;
     const cultureData = normalizeCulture(dashboardData?.cultureData) || defaultCultureData;
     const attritionData = dashboardData?.attritionData || defaultAttritionData;
     const roiData = dashboardData?.roiData || defaultRoiData;
     const employeeFeedbackData = dashboardData?.employeeFeedbackData || defaultEmployeeFeedbackData;
+    const solutionRoadmap = dashboardData?.solutionRoadmap || defaultSolutionRoadmap;
+
+    const defaultRoiAssumptions = {
+        turnoverReduction: {
+            title: "Turnover Reduction",
+            description: "10% drop in voluntary exits = ₹28M saved (recruitment + ramp costs)"
+        },
+        productivityUplift: {
+            title: "Productivity Uplift",
+            description: "3% revenue per employee increase = ₹35M incremental"
+        },
+        timeline: {
+            title: "Timeline: 0–12 months",
+            description: "Pilot (months 1–3) → Rollout (months 4–8) → Scale (months 9–12)"
+        }
+    };
+
+    const roiAssumptions = dashboardData?.roiAssumptions || defaultRoiAssumptions;
 
     const bubbleChartData = cultureData.map((item) => ({
         x: item.codeclouds,
@@ -359,20 +384,40 @@ export default function CultureDiagnosisPager() {
     }, [id]);
 
     console.log({ companyDetails });
+    console.log({ dashboardData })
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-950 via-purple-950 to-slate-950 text-white">
             {/* Header */}
             <header className="sticky top-0 z-50 border-b border-purple-500/20 bg-slate-950/80 backdrop-blur-md">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                            {companyDetails?.company_name}
-                        </h1>
-                        <p className="text-sm text-purple-300">Culture + Performance Diagnostic</p>
+                    <div className="flex items-center gap-4">
+                        {companyStats.company_domain && (
+                            <img
+                                src={`https://logo.clearbit.com/${companyStats.company_domain}`}
+                                alt={`${companyDetails?.company_name} logo`}
+                                className="w-12 h-12 rounded-lg object-contain bg-white/10 p-2"
+                                onError={(e) => e.target.style.display = 'none'}
+                            />
+                        )}
+                        <div>
+                            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                {companyDetails?.company_name}
+                            </h1>
+                            <p className="text-sm text-purple-300">Culture + Performance Diagnostic</p>
+                        </div>
                     </div>
                     <div className="text-right text-sm text-purple-300">
-                        <p>October 2025</p>
+                        <p>{companyDetails?.created_at
+                            ? new Date(companyDetails.created_at).toLocaleDateString('en-US', {
+                                month: 'long',
+                                year: 'numeric'
+                            })
+                            : new Date().toLocaleDateString('en-US', {
+                                month: 'long',
+                                year: 'numeric'
+                            })
+                        }</p>
                     </div>
                 </div>
             </header>
@@ -712,9 +757,9 @@ export default function CultureDiagnosisPager() {
                                 <div className="flex gap-3">
                                     <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="font-semibold text-green-300">Turnover Reduction</p>
+                                        <p className="font-semibold text-green-300">{roiAssumptions.turnoverReduction.title}</p>
                                         <p className="text-sm text-green-200">
-                                            10% drop in voluntary exits = ₹28M saved (recruitment + ramp costs)
+                                            {roiAssumptions.turnoverReduction.description}
                                         </p>
                                     </div>
                                 </div>
@@ -723,15 +768,15 @@ export default function CultureDiagnosisPager() {
                                 <div className="flex gap-3">
                                     <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="font-semibold text-green-300">Productivity Uplift</p>
-                                        <p className="text-sm text-green-200">3% revenue per employee increase = ₹35M incremental</p>
+                                        <p className="font-semibold text-green-300">{roiAssumptions.productivityUplift.title}</p>
+                                        <p className="text-sm text-green-200">{roiAssumptions.productivityUplift.description}</p>
                                     </div>
                                 </div>
                             </div>
                             <div className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/30 rounded-lg p-4">
-                                <p className="text-sm text-amber-300 font-semibold mb-2">Timeline: 0–12 months</p>
+                                <p className="text-sm text-amber-300 font-semibold mb-2">{roiAssumptions.timeline.title}</p>
                                 <p className="text-sm text-amber-200">
-                                    Pilot (months 1–3) → Rollout (months 4–8) → Scale (months 9–12)
+                                    {roiAssumptions.timeline.description}
                                 </p>
                             </div>
                         </div>
@@ -745,32 +790,7 @@ export default function CultureDiagnosisPager() {
                         <p className="text-purple-300">Wazo features directly address identified cultural gaps</p>
                     </div>
                     <div className="space-y-3">
-                        {[
-                            {
-                                problem: "Low Recognition",
-                                feature: "Awards + Badges + Feed",
-                                impact: "+12% retention",
-                                timeline: "3–6 mo",
-                            },
-                            {
-                                problem: "Poor Manager Feedback",
-                                feature: "Anonymous Feedback + Pulse",
-                                impact: "+8% engagement",
-                                timeline: "1–3 mo",
-                            },
-                            {
-                                problem: "Career Clarity Gap",
-                                feature: "Journey + Analytics",
-                                impact: "+15% internal mobility",
-                                timeline: "6–12 mo",
-                            },
-                            {
-                                problem: "Communication Gaps",
-                                feature: "Feed + Announcements",
-                                impact: "+10% trust score",
-                                timeline: "1–2 mo",
-                            },
-                        ].map((item, idx) => (
+                        {solutionRoadmap.map((item, idx) => (
                             <div
                                 key={idx}
                                 className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-lg p-4 flex items-center justify-between"

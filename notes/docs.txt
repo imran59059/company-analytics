@@ -1,0 +1,168 @@
+Docs: Live Data Collection Requirements
+==========================================
+
+gptSearch.txt থেকে যে ধরনের Live Data সংগ্রহ করা হচ্ছে:
+(BrowserStack, 20Cube, ATS Global, Oda Class এর উদাহরণ থেকে)
+
+📊 **মূল Data Categories:**
+
+1. **General Info (Wiki, News, Company Website)**
+   - Company founding year, CEO name
+   - Headquarters location
+   - Company description & business model
+   - Product/service offerings
+   - Recent acquisitions & growth news
+   - Company positioning & market presence
+
+2. **Financials (Revenue, Profit)**
+   - Annual revenue (global & regional/entity-wise)
+   - Profit After Tax (PAT)
+   - Revenue/Employee ratio
+   - Profit/Employee ratio
+   - Funding history & investors
+   - Financial growth trends (YoY)
+
+3. **Company Website & Official Sources**
+   - Official company domain
+   - Product pages & features
+   - Company blog & press releases
+   - Career pages & job postings
+   - About us & team information
+
+4. **Reviews (Glassdoor, Indeed, AmbitionBox)**
+   - Overall company ratings
+   - "Would recommend to a friend" percentage
+   - Work-life balance scores
+   - Culture & values ratings
+   - Career growth feedback
+   - Management quality reviews
+   - Compensation & benefits reviews
+   - Positive & negative review themes
+
+5. **Employee Metrics** ⭐ (নতুন/অতিরিক্ত)
+   - Total employee count
+   - Employee growth trends
+   - Department/team structure
+   - Remote/hybrid work policies
+   - Employee tenure patterns
+
+6. **HR & Culture Metrics** ⭐ (নতুন/অতিরিক্ত)
+   - eNPS (Employee Net Promoter Score)
+   - Retention rate
+   - Turnover rate (voluntary/involuntary)
+   - Absenteeism rate
+   - PTO (Paid Time Off) usage patterns
+   - Employee engagement levels
+
+7. **Management & Leadership** ⭐ (নতুন/অতিরিক্ত)
+   - Manager-employee relationship quality
+   - Leadership vision & effectiveness
+   - Communication patterns
+   - Organizational politics indicators
+   - Decision-making transparency
+
+8. **Industry & Competitive Data** ⭐ (নতুন/অতিরিক্ত)
+   - Industry benchmarks (revenue/employee, turnover, etc.)
+   - Competitor comparisons
+   - Market positioning
+   - Industry-specific metrics (SaaS, logistics, manufacturing, etc.)
+
+9. **Certifications & Awards** ⭐ (নতুন/অতিরিক্ত)
+   - Great Place To Work certification
+   - Industry awards & recognition
+   - Quality certifications
+   - Compliance & regulatory status
+
+10. **Indian Company-Specific Data** ⭐ (নতুন/অতিরিক্ত)
+    - MCA (Ministry of Corporate Affairs) registration
+    - ROC (Registrar of Companies) filings
+    - Tofler/Zaubacorp company data
+    - Indian entity revenue & profit (₹)
+    - GST & compliance status
+
+11. **Operational Metrics** ⭐ (নতুন/অতিরিক্ত)
+    - Billable utilization (for services companies)
+    - Project delivery quality
+    - Customer SLA adherence
+    - Error/exception rates
+    - Time-to-productivity for new hires
+
+12. **Technology & Tools** ⭐ (নতুন/অতিরিক্ত)
+    - Tech stack information
+    - Internal tools & platforms
+    - Integration capabilities
+    - Digital transformation initiatives
+
+
+📌 **Data Sources Being Used:**
+
+**Primary Sources:**
+- Company official website
+- LinkedIn company page
+- Glassdoor reviews
+- Indeed reviews
+- AmbitionBox reviews (India-specific)
+
+**Financial & Business Data:**
+- Tracxn
+- Crunchbase
+- GetLatka/Latka
+- PitchBook
+- Growjo
+- Datanyze
+- Levels.fyi
+
+**Indian Company Data:**
+- Tofler.in
+- Zaubacorp.com
+- MCA (Ministry of Corporate Affairs)
+- Economic Times
+- MoneyControl
+- Forbes India
+- Inc42
+
+**Industry Benchmarks:**
+- SaaStr
+- SaaS Capital
+- Culture Amp
+- HeartCount
+- AIHR (Academy to Innovate HR)
+- Mercer surveys
+- Great Place To Work
+
+**News & Media:**
+- Reuters
+- Bloomberg
+- Economic Times
+- TechCrunch
+- Industry-specific publications
+
+
+🎯 **Current Implementation (server-openai.js):**
+
+Currently using **4 Tavily searches** per company:
+1. Basic company information (headquarters, website)
+2. Financial information (revenue, profit, annual reports)
+3. Employee reviews (complaints, feedback, ratings)
+4. India MCA registration details
+
+
+✅ **Summary:**
+
+আপনার বর্তমান implementation এ যা আছে:
+- General Info ✓
+- Financials ✓
+- Company Website ✓
+- Reviews (Glassdoor) ✓
+
+এছাড়া gptSearch.txt থেকে যা পাওয়া যাচ্ছে (অতিরিক্ত):
+- Employee Metrics (headcount, growth)
+- HR Metrics (eNPS, retention, turnover, absenteeism, PTO)
+- Management Quality
+- Industry Benchmarks
+- Certifications (Great Place To Work)
+- Indian Company Data (MCA, Tofler, Zaubacorp)
+- Operational Metrics
+- Technology Stack
+
+Total: **12 categories** of data being collected in the comprehensive analysis.

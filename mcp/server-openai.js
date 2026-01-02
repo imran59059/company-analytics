@@ -1,12 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
 import { pool } from "./db.js";
 import { v4 as uuidv4 } from "uuid";
-import { z } from "zod";
 import { tavily } from "@tavily/core";
 
 dotenv.config();
@@ -35,13 +32,11 @@ expressApp.use(cors({
 }));
 expressApp.use(express.json());
 
-const mcpServer = new McpServer({
-  name: "enhanced-business-analytics-server",
-  version: "3.0.0",
-});
+// ----------------------------- CONFIGURATION -----------------------------
+const ANALYSIS_DURATION_YEARS = 5;
+const ANALYSIS_REGION_SCOPE = "India"; // "Global", "USA", "India", etc.
 
 // ----------------------------- WEB SEARCH FUNCTIONS -----------------------------
-
 /**
  * Extract clean domain name from URL
  */
@@ -353,13 +348,19 @@ Provide factual information with SOURCE CITATIONS:
 1. **Business Nature**: Industry, sector, operations [cite platform name]
 2. **Company Status**: Active/Inactive, registration [cite platform name]
 3. **Financial Metrics**: 
-   - Annual revenue [cite platform name]
-   - Profit After Tax (PAT) [cite platform name]
+   - Annual revenue **in INR (₹)** - prefer Indian Rupees over USD [cite platform name]
+   - Profit After Tax (PAT) **in INR (₹)** [cite platform name]
    - If unavailable: "Financial data not publicly disclosed"
+   - **CRITICAL FOR INDIAN COMPANIES**: If source data shows USD ($), convert to INR (₹) using rate: 1 USD = ₹83
+   - Example: $118,440 should be reported as "₹98.3 Lakhs" or "₹0.98 Cr"
+   - Always show Indian companies' revenue in INR format
 4. **Employee Information**:
    - Employee count [cite platform name]
-   - Revenue per employee (if calculable)
-   - Profit per employee (if calculable)
+   - Revenue per employee **in INR (₹)** (if calculable)
+   - Profit per employee **in INR (₹)** (if calculable)
+   - **eNPS (Employee Net Promoter Score)**: Extract from employee reviews or estimate based on "would recommend to a friend" percentage [cite platform name]
+   - **Absenteeism rate**: If available from company reports or industry estimates [cite platform name or note "Data not available"]
+   - **PTO (Paid Time Off) usage**: Patterns, unused PTO, work-life balance indicators [cite platform name or note "Data not available"]
 5. **Employee Sentiment**: Complaints/feedback [cite platform name]
 6. **Market Position**: Industry benchmark [cite platform name]
 7. **Engagement Level**: Employee engagement indicators [cite platform name]
@@ -622,95 +623,230 @@ async function* generateCompanyVoiceReviews(companyName, liveWebData) {
   }
 }
 
+// ----------------------------- DASHBOARD DATA VALIDATION -----------------------------
+
+function validateDashboardData(dashboardDataString) {
+  try {
+    const data = JSON.parse(dashboardDataString);
+
+    const requiredKeys = [
+      'companyStats',
+      'executiveSummary',
+      'yoyTrendingData',
+      'metricInsights',
+      'cultureData',
+      'attritionData',
+      'roiData',
+      'employeeFeedbackData'
+    ];
+
+    const missingKeys = requiredKeys.filter(key => !data[key]);
+
+    if (missingKeys.length > 0) {
+      console.warn(`⚠️ Dashboard data missing keys: ${missingKeys.join(', ')}`);
+      return { valid: false, errors: [`Missing required keys: ${missingKeys.join(', ')}`], data };
+    }
+
+    // Validate yoyTrendingData structure
+    const requiredMetrics = ['Revenue/Emp', 'Profit/Emp', 'Retention', 'Turnover'];
+    const missingMetrics = requiredMetrics.filter(m => !data.yoyTrendingData[m]);
+
+    if (missingMetrics.length > 0) {
+      console.warn(`⚠️ YoY trending data missing metrics: ${missingMetrics.join(', ')}`);
+    }
+
+    // Validate cultureData has correct keys
+    if (Array.isArray(data.cultureData) && data.cultureData.length > 0) {
+      const hasCompanyScore = data.cultureData.every(item =>
+        item.hasOwnProperty('company_score') || item.hasOwnProperty('codeclouds')
+      );
+      const hasIndustryScore = data.cultureData.every(item =>
+        item.hasOwnProperty('industry_score') || item.hasOwnProperty('industry')
+      );
+
+      if (!hasCompanyScore || !hasIndustryScore) {
+        console.warn('⚠️ Culture data has incorrect key naming');
+      }
+    }
+
+    console.log('✅ Dashboard data validation passed');
+    return { valid: true, errors: [], data };
+
+  } catch (error) {
+    console.error('❌ Dashboard data validation failed:', error.message);
+    return { valid: false, errors: [`JSON parse error: ${error.message}`], data: null };
+  }
+}
+
 // ----------------------------- PROMPT: DASHBOARD DATA -----------------------------
 
-function buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis) {
+function buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis, liveWebData) {
   return `Act as a senior business intelligence analyst. Based on the analysis of "${companyName}" provided below, generate a realistic JSON dataset for a strategic HR & Performance dashboard.
 
-**Analysis Context:**
-${companyDetails.substring(0, 3000)}...
+**CRITICAL INSTRUCTIONS:**
+1. **PRIORITIZE EXACT DATA**: You MUST extract and use EXACT numbers from the analysis below when available
+2. **DO NOT GUESS**: Only infer values if explicit data is completely unavailable
+3. **VERIFY SOURCES**: Cross-reference data from company details, analysis, and live web data
+4. **MAINTAIN CONSISTENCY**: Ensure all metrics align with the provided information
+5. **SCOPE & DURATION**: 
+   - Focus analysis strictly on the **${ANALYSIS_REGION_SCOPE}** market/entity unless global data is explicitly better
+   - Provide trending data for the last **${ANALYSIS_DURATION_YEARS} years** (e.g., 2021-2025)
+   - Ensure specific references to **${ANALYSIS_REGION_SCOPE}** currency and fiscal year standards
+
+**COMPLETE COMPANY DETAILS:**
+${companyDetails}
+
+**STRATEGIC ANALYSIS:**
 ${finalAnalysis}
+
+**LIVE WEB SEARCH DATA:**
+${liveWebData || "No additional live data available"}
 
 **Required JSON Structure:**
 You must return a SINGLE VALID JSON object with these keys:
 {
   "companyStats": {
-    "employees": "1,200",
-    "revenue": "$50M",
-    "turnover": "15%",
-    "avg_tenure": "3.5 yrs"
+    "employees": "[EXTRACT from analysis or use 'Data not available']",
+    "revenue": "[EXTRACT from analysis in INR (₹) format, e.g., '₹245M' or '₹68.2 Cr']",
+    "turnover": "[EXTRACT from analysis or calculate from data]",
+    "avg_tenure": "[EXTRACT from analysis or use 'Data not available']",
+    "enps": "[EXTRACT eNPS from analysis or calculate from Glassdoor 'would recommend' %]",
+    "absenteeism": "[EXTRACT from analysis or use 'Data not available']",
+    "pto_usage": "[EXTRACT PTO patterns from analysis or use 'Data not available']",
+    "company_domain": "[EXTRACT company website domain for logo, e.g., 'browserstack.com']"
   },
   "executiveSummary": {
-    "text": "The company shows strong fundamentals but struggles with...",
-    "highlight": "20% PAT improvement"
+    "text": "[Summarize key findings from the analysis]",
+    "highlight": "[Extract most significant metric improvement or challenge]"
   },
   "yoyTrendingData": {
-    "Revenue/Emp": [ {"year": "2021", "company_score": 65, "industry_score": 85}, ... ],
-    "Profit/Emp": [ ... ],
-    "Retention": [ ... ],
-    "Turnover": [ ... ]
+    "Revenue/Emp": [ {"year": "YYYY", "company_score": [number], "industry_score": [number]}, ... for ${ANALYSIS_DURATION_YEARS} years ending current year ],
+    "Profit/Emp": [ ... same structure ... ],
+    "Retention": [ ... same structure ... ],
+    "Turnover": [ ... same structure ... ]
   },
   "metricInsights": {
-    "Revenue/Emp": { "status": "Improving|Lagging|Competitive", "current": "85 vs 100", "gap": "15% below", "insight": "...", "color": "amber|red|green" },
-    "Profit/Emp": { ... },
-    "Retention": { ... },
-    "Turnover": { ... }
+    "Revenue/Emp": { "status": "Improving|Lagging|Competitive", "current": "[X vs Y]", "gap": "[% difference]", "insight": "[detailed analysis]", "color": "amber|red|green" },
+    "Profit/Emp": { ... same structure ... },
+    "Retention": { ... same structure ... },
+    "Turnover": { ... same structure ... }
   },
   "cultureData": [
-    { "dimension": "Recognition", "company_score": 6.2, "industry_score": 7.5 },
-    { "dimension": "Manager Rel.", "company_score": 6.8, "industry_score": 7.8 },
-    { "dimension": "Leadership", "company_score": 7.1, "industry_score": 8.0 },
-    { "dimension": "Psych Safety", "company_score": 6.5, "industry_score": 7.2 },
-    { "dimension": "Career Growth", "company_score": 5.9, "industry_score": 7.6 },
-    { "dimension": "Work-Life", "company_score": 7.2, "industry_score": 7.4 },
-    { "dimension": "Communication", "company_score": 6.9, "industry_score": 7.7 }
+    { "dimension": "Recognition", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Manager Rel.", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Leadership", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Psych Safety", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Career Growth", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Work-Life", "company_score": [0-10], "industry_score": [0-10] },
+    { "dimension": "Communication", "company_score": [0-10], "industry_score": [0-10] }
   ],
   "attritionData": [
-    { "tenure": "0-1yr", "count": 24, "reason": "Growth" },
-    { "tenure": "1-3yr", "count": 18, "reason": "Manager" },
-    { "tenure": "3-5yr", "count": 10, "reason": "Pay" },
-    { "tenure": "5+yr", "count": 5, "reason": "Culture" }
+    { "tenure": "0-1yr", "count": [number], "reason": "[primary reason]" },
+    { "tenure": "1-3yr", "count": [number], "reason": "[primary reason]" },
+    { "tenure": "3-5yr", "count": [number], "reason": "[primary reason]" },
+    { "tenure": "5+yr", "count": [number], "reason": "[primary reason]" }
   ],
   "roiData": [
     { "lever": "Baseline PAT", "value": 100 },
     { "lever": "Assessment", "value": 0 },
-    { "lever": "Turnover Reduction", "value": 25 },
-    { "lever": "Productivity Uplift", "value": 30 },
-    { "lever": "Projected PAT", "value": 155 }
+    { "lever": "Turnover Reduction", "value": [CALCULATE based on turnover gap * employee count scale. DO NOT use generic 25 for all companies!] },
+    { "lever": "Productivity Uplift", "value": [CALCULATE based on culture gaps. Larger gaps = higher value. DO NOT use generic 30!] },
+    { "lever": "Projected PAT", "value": [SUM of above values] }
   ],
   "employeeFeedbackData": {
-    "Recognition": { "gap": "...", "comments": [{ "source": "Glassdoor", "rating": 3, "text": "...", "author": "..." }] },
-    "Career Growth": { "gap": "...", "comments": [...] },
-    "Communication": { "gap": "...", "comments": [...] },
-    "Manager Rel.": { ... },
-    "Leadership": { ... },
-    "Psych Safety": { ... },
-    "Work-Life": { ... }
+    "Recognition": { "gap": "[X/10 vs Y industry]", "comments": [{ "source": "[Glassdoor/Indeed/AmbitionBox]", "rating": [1-5], "text": "[EXTRACT VERBATIM QUOTE - minimum 50 chars]", "author": "[Job title from review]" }] },
+    "Career Growth": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] },
+    "Communication": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] },
+    "Manager Rel.": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] },
+    "Leadership": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] },
+    "Psych Safety": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] },
+    "Work-Life": { "gap": "...", "comments": [{ "source": "...", "rating": [1-5], "text": "[VERBATIM QUOTE]", "author": "..." }] }
+  },
+  "solutionRoadmap": [
+    { 
+      "problem": "[Identify top cultural gap from cultureData, e.g., 'Low Recognition' if Recognition has biggest gap]", 
+      "feature": "[Wazo solution: Awards + Badges + Feed / Pulse Surveys / Journey + Analytics / etc.]", 
+      "impact": "[Projected improvement based on gap size, e.g., '+12% retention']", 
+      "timeline": "[Implementation timeline: 1-3 mo / 3-6 mo / 6-12 mo]" 
+    },
+    { "problem": "[Second biggest gap]", "feature": "[Relevant solution]", "impact": "[Impact]", "timeline": "[Timeline]" },
+    { "problem": "[Third gap]", "feature": "[Solution]", "impact": "[Impact]", "timeline": "[Timeline]" },
+    { "problem": "[Fourth gap]", "feature": "[Solution]", "impact": "[Impact]", "timeline": "[Timeline]" }
+  ],
+  "roiAssumptions": {
+    "turnoverReduction": {
+      "title": "Turnover Reduction",
+      "description": "[CALCULATE: X% drop in voluntary exits = ₹YM saved. Use actual employee count, turnover rate, and avg hiring cost]"
+    },
+    "productivityUplift": {
+      "title": "Productivity Uplift",
+      "description": "[CALCULATE: X% revenue per employee increase = ₹YM incremental. Use actual revenue and employee data]"
+    },
+    "timeline": {
+      "title": "Timeline: 0–12 months",
+      "description": "Pilot (months 1–3) → Rollout (months 4–8) → Scale (months 9–12)"
+    }
   }
 }
 
-**Rules:**
-1. Populate with REAListic estimated data based on the text analysis. If explicit numbers are missing, infer plausible values.
-2. Ensure strict JSON syntax. No markdown. No comments.
-3. "company_score" represents ${companyName}'s metric. "industry_score" is Benchmark.
+**STRICT RULES:**
+1. **USE EXACT DATA FIRST**: Extract actual numbers from the analysis. DO NOT use placeholder values if real data exists.
+2. **JSON ONLY**: No markdown, no comments, no explanations outside JSON.
+3. **KEY NAMING**: ALWAYS use "company_score" and "industry_score" (NOT "codeclouds" or other names).
+4. **DATA CONSISTENCY**: Ensure employee count, revenue, and other metrics are consistent across all sections.
+5. **YEAR-OVER-YEAR DATA**: Generate realistic 5-year trends based on current metrics and industry patterns.
+6. **EMPLOYEE FEEDBACK - CRITICAL**: 
+   - Extract VERBATIM quotes from employee reviews in the live web data
+   - Each comment must be minimum 50 characters
+   - Include at least 3 real comments per cultural dimension
+   - DO NOT generate fictional reviews
+   - Use exact text from Glassdoor/Indeed/AmbitionBox sources
+7. **COMPANY DOMAIN**: Extract the company's primary website domain (e.g., "browserstack.com") for logo display.
+8. **CURRENCY FORMAT - CRITICAL**: 
+   - ALWAYS use INR (₹) for revenue and financial metrics for Indian companies
+   - If source shows USD, convert: 1 USD = ₹83
+   - Format examples: "₹245M" or "₹68.2 Cr" or "₹98.3 Lakhs"
+   - Example conversion: $118,440 = ₹98.3 Lakhs (or ₹0.98 Cr)
+   - DO NOT use USD ($) for Indian companies
+9. **ROI DATA - CRITICAL**:
+   - DO NOT use generic values (25, 30, 155) for all companies
+   - CALCULATE company-specific ROI based on:
+     * Employee count (larger companies = higher absolute impact)
+     * Turnover gap (current vs industry benchmark)
+     * Culture dimension gaps (larger gaps = higher productivity potential)
+   - Example: 10,000 employees with 15% turnover vs 10% industry = higher value than 500 employees
+   - Example: Culture gaps of 2.0 points = higher productivity uplift than 0.5 points
+   - Make each company's ROI data unique and realistic
+10. **SOLUTION ROADMAP - CRITICAL**:
+   - Identify the 4 BIGGEST cultural gaps from cultureData
+   - Map each gap to a specific Wazo solution
+   - Calculate impact based on gap size (bigger gap = higher potential impact)
+   - Prioritize by timeline (quick wins first, then longer-term solutions)
+   - DO NOT use generic solutions - make them company-specific
+11. **ROI ASSUMPTIONS - CRITICAL**:
+   - Calculate company-specific ROI assumptions based on actual data
+   - Turnover Reduction: Use actual employee count, turnover %, and industry avg hiring cost (₹5-8 Lakhs per hire)
+   - Productivity Uplift: Calculate based on revenue/employee and realistic improvement %
+   - Make calculations specific to company size and industry
+   - Example: 1000 employees, 15% turnover, ₹6L/hire = ₹90 Cr annual turnover cost, 10% reduction = ₹9 Cr saved
 `;
 }
 
 // ----------------------------- STEP 4: DASHBOARD DATA GENERATOR -----------------------------
 
-async function* generateDashboardData(companyName, companyDetails, finalAnalysis) {
+async function* generateDashboardData(companyName, companyDetails, finalAnalysis, liveWebData) {
   try {
-    const prompt = buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis);
+    const prompt = buildDashboardDataPrompt(companyName, companyDetails, finalAnalysis, liveWebData);
 
     const streamingResponse = await openAIClient.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: "You are a data generator backend. Output ONLY JSON." },
+        { role: "system", content: "You are a data extraction and analysis backend. Extract EXACT data from provided sources. Output ONLY valid JSON with no markdown or comments." },
         { role: "user", content: prompt },
       ],
       stream: true,
       response_format: { type: "json_object" },
-      temperature: 0.7,
+      temperature: 0.3,
     });
 
     for await (const responseChunk of streamingResponse) {
@@ -838,7 +974,7 @@ async function* generateTriStepAnalysis(companyName) {
   // STEP 4: Dashboard Data
   console.log(`📊 Step 4: Generating dashboard data for ${companyName}`);
 
-  for await (const chunk of generateDashboardData(companyName, companyDetails, finalAnalysis)) {
+  for await (const chunk of generateDashboardData(companyName, companyDetails, finalAnalysis, liveWebData)) {
     if (chunk.error) {
       yield chunk;
       return;
@@ -861,44 +997,7 @@ async function* generateTriStepAnalysis(companyName) {
   }
 }
 
-// ----------------------------- MCP TOOL -----------------------------
 
-const processTriStepAnalysisRequest = async ({ prompt: companyName }) => {
-  console.log(`📊 Processing tri-step analysis for: "${companyName}"`);
-
-  let companyDetails = "";
-  let finalAnalysis = "";
-  let companyVoice = "";
-  let sourcesMetadata = null;
-
-  for await (const chunk of generateTriStepAnalysis(companyName)) {
-    if (chunk.error) return { content: [{ type: "text", text: chunk.error }] };
-
-    if (chunk.sourcesMetadata) {
-      sourcesMetadata = chunk.sourcesMetadata;
-    }
-
-    if (chunk.result) {
-      if (chunk.step === 1) companyDetails += chunk.result;
-      else if (chunk.step === 2) finalAnalysis += chunk.result;
-      else if (chunk.step === 3) companyVoice += chunk.result;
-    }
-  }
-
-  const sourcesSection = sourcesMetadata?.sourcesDisplay || "No sources available";
-  const combinedResult = `**STEP 1: COMPANY DETAILS**\n${companyDetails}\n\n**STEP 2: COMPREHENSIVE ANALYSIS**\n${finalAnalysis}\n\n**STEP 3: COMPANY VOICE REVIEWS**\n${companyVoice}\n\n${sourcesSection}`;
-
-  console.log("✅ Tri-step analysis completed");
-  return { content: [{ type: "text", text: combinedResult }] };
-};
-
-mcpServer.tool(
-  "analyzeTriStepCompanyBusiness",
-  {
-    prompt: z.string().describe("Company name to analyze"),
-  },
-  processTriStepAnalysisRequest
-);
 
 // ----------------------------- HTTP ENDPOINTS -----------------------------
 
@@ -990,6 +1089,18 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
 
     const analysisLatency = Date.now() - analysisStartTime;
 
+    // Validate dashboard data before saving
+    let validatedDashboardData = dashboardData;
+    if (dashboardData) {
+      const validation = validateDashboardData(dashboardData);
+      if (!validation.valid) {
+        console.error(`❌ Dashboard data validation failed for ${companyName}:`, validation.errors);
+        // Still save but log the issues
+      } else {
+        console.log(`✅ Dashboard data validated successfully for ${companyName}`);
+      }
+    }
+
     await pool.execute(
       `INSERT INTO company_analytc 
         (uuid, company_name, model, latency_ms, analysis, company_details, reviews, sources, dashboard_data, created_at)
@@ -1003,7 +1114,7 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
         companyDetails || "Details not available.",
         companyVoice || "Reviews not available.",
         sourcesMetadata?.sourcesJson || null,
-        dashboardData || null,
+        validatedDashboardData || null,
       ]
     );
 
@@ -1018,6 +1129,24 @@ expressApp.post("/tri-step-analysis-stream", async (req, res) => {
 
 // ----------------------------- ANALYTICS ENDPOINT WITH SOURCES -----------------------------
 
+// Get all company analyses
+expressApp.get("/api/company-analytics", async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT uuid, company_name, model, latency_ms, created_at 
+       FROM company_analytc 
+       ORDER BY created_at DESC 
+       LIMIT 100`
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error("❌ Error fetching company analytics:", error);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+// Get specific company analysis by UUID
 expressApp.get("/api/company-analytics/:uuid", async (req, res) => {
   const { uuid } = req.params;
 
@@ -1104,30 +1233,13 @@ expressApp.get("/api/company-sources/:uuid", async (req, res) => {
 
 async function initializeBusinessAnalyticsServer() {
   try {
-    try {
-      await pool.execute(`
-        ALTER TABLE company_analytc 
-        ADD COLUMN IF NOT EXISTS sources JSON,
-        ADD COLUMN IF NOT EXISTS dashboard_data JSON
-      `);
-      console.log("✅ Database schema updated with sources column");
-    } catch (dbError) {
-      console.log("ℹ️ Database schema already up to date");
-    }
-
-    const mcpTransport = new StreamableHTTPServerTransport({
-      port: 8081,
-      host: "localhost",
-    });
-
-    await mcpServer.connect(mcpTransport);
-
-    expressApp.listen(8081, () => {
-      console.log("✅ Enhanced Business Analytics Server with Source Tracking is running!");
+    // Start Express HTTP server
+    expressApp.listen(3001, () => {
+      console.log("✅ Enhanced Business Analytics Server is running!");
       console.log("📍 Available Endpoints:");
-      console.log("   POST http://localhost:8081/tri-step-analysis-stream");
-      console.log("   GET  http://localhost:8081/api/company-analytics/:uuid");
-      console.log("   GET  http://localhost:8081/api/company-sources/:uuid");
+      console.log("   POST http://localhost:3001/tri-step-analysis-stream");
+      console.log("   GET  http://localhost:3001/api/company-analytics/:uuid");
+      console.log("   GET  http://localhost:3001/api/company-sources/:uuid");
     });
   } catch (error) {
     console.error("❌ Failed to initialize server:", error);
